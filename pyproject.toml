@@ -5,7 +5,7 @@ description = "A simple GUI application for sending LSL markers"
 authors = [
   {name = "kimit0310", email = "kimit0310@gmail.com"}
 ]
-license = "LGPL-2.1"
+license = "LGPL-2.1-only"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
