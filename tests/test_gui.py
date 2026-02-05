@@ -1,6 +1,5 @@
 """Tests for the GUI module."""
 
-from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
@@ -29,43 +28,43 @@ def mock_gui() -> MobiMarkerGUI:
         return gui
 
 
-def _lsl_thread(gui: MobiMarkerGUI) -> Any:
-    """Return lsl_thread as Any for mock assertions."""
-    return gui.lsl_thread
+def _lsl_thread(gui: MobiMarkerGUI) -> Mock:
+    """Return lsl_thread as Mock for mock assertions."""
+    return gui.lsl_thread  # type: ignore[return-value]
 
 
-def _marker_input(gui: MobiMarkerGUI) -> Any:
-    """Return marker_input as Any for mock assertions."""
-    return gui.marker_input
+def _marker_input(gui: MobiMarkerGUI) -> Mock:
+    """Return marker_input as Mock for mock assertions."""
+    return gui.marker_input  # type: ignore[return-value]
 
 
-def _status_display(gui: MobiMarkerGUI) -> Any:
-    """Return status_display as Any for mock assertions."""
-    return gui.status_display
+def _status_display(gui: MobiMarkerGUI) -> Mock:
+    """Return status_display as Mock for mock assertions."""
+    return gui.status_display  # type: ignore[return-value]
 
 
-def _modality_combo(gui: MobiMarkerGUI) -> Any:
-    """Return modality_combo as Any for mock assertions."""
-    return gui.modality_combo
+def _modality_combo(gui: MobiMarkerGUI) -> Mock:
+    """Return modality_combo as Mock for mock assertions."""
+    return gui.modality_combo  # type: ignore[return-value]
 
 
-def _custom_modality_input(gui: MobiMarkerGUI) -> Any:
-    """Return custom_modality_input as Any for mock assertions."""
-    return gui.custom_modality_input
+def _custom_modality_input(gui: MobiMarkerGUI) -> Mock:
+    """Return custom_modality_input as Mock for mock assertions."""
+    return gui.custom_modality_input  # type: ignore[return-value]
 
 
-def _send_button(gui: MobiMarkerGUI) -> Any:
-    """Return send_button as Any for mock assertions."""
-    return gui.send_button
+def _send_button(gui: MobiMarkerGUI) -> Mock:
+    """Return send_button as Mock for mock assertions."""
+    return gui.send_button  # type: ignore[return-value]
 
 
-def _end_modality_button(gui: MobiMarkerGUI) -> Any:
-    """Return end_modality_button as Any for mock assertions."""
-    return gui.end_modality_button
+def _end_modality_button(gui: MobiMarkerGUI) -> Mock:
+    """Return end_modality_button as Mock for mock assertions."""
+    return gui.end_modality_button  # type: ignore[return-value]
 
 
-def _quick_marker_buttons(gui: MobiMarkerGUI) -> list[Any]:
-    """Return quick_marker_buttons as list[Any] for mock assertions."""
+def _quick_marker_buttons(gui: MobiMarkerGUI) -> list[Mock]:
+    """Return quick_marker_buttons as list[Mock] for mock assertions."""
     return gui.quick_marker_buttons  # type: ignore[return-value]
 
 
