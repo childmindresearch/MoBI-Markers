@@ -1,11 +1,11 @@
 """Tests for the GUI module."""
 
+from typing import Any
 from unittest.mock import Mock, patch
 
 import pytest
 
 from mobi_marker.gui import AVAILABLE_MODALITIES, MobiMarkerGUI, main
-from mobi_marker.lsl_stream import LSLStreamThread
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ def mock_gui() -> MobiMarkerGUI:
         patch("mobi_marker.gui.MobiMarkerGUI.start_lsl_stream"),
     ):
         gui = MobiMarkerGUI()
-        gui.lsl_thread = Mock(spec=LSLStreamThread)
+        gui.lsl_thread = Mock()
         gui.marker_input = Mock()
         gui.status_display = Mock()
         gui.modality_combo = Mock()
@@ -27,6 +27,46 @@ def mock_gui() -> MobiMarkerGUI:
         gui.end_modality_button = Mock()
         gui.quick_marker_buttons = [Mock(), Mock(), Mock()]
         return gui
+
+
+def _lsl_thread(gui: MobiMarkerGUI) -> Any:
+    """Return lsl_thread as Any for mock assertions."""
+    return gui.lsl_thread
+
+
+def _marker_input(gui: MobiMarkerGUI) -> Any:
+    """Return marker_input as Any for mock assertions."""
+    return gui.marker_input
+
+
+def _status_display(gui: MobiMarkerGUI) -> Any:
+    """Return status_display as Any for mock assertions."""
+    return gui.status_display
+
+
+def _modality_combo(gui: MobiMarkerGUI) -> Any:
+    """Return modality_combo as Any for mock assertions."""
+    return gui.modality_combo
+
+
+def _custom_modality_input(gui: MobiMarkerGUI) -> Any:
+    """Return custom_modality_input as Any for mock assertions."""
+    return gui.custom_modality_input
+
+
+def _send_button(gui: MobiMarkerGUI) -> Any:
+    """Return send_button as Any for mock assertions."""
+    return gui.send_button
+
+
+def _end_modality_button(gui: MobiMarkerGUI) -> Any:
+    """Return end_modality_button as Any for mock assertions."""
+    return gui.end_modality_button
+
+
+def _quick_marker_buttons(gui: MobiMarkerGUI) -> list[Any]:
+    """Return quick_marker_buttons as list[Any] for mock assertions."""
+    return gui.quick_marker_buttons  # type: ignore[return-value]
 
 
 class TestAvailableModalities:
@@ -62,39 +102,39 @@ class TestSendMarker:
 
     def test_valid_input_sends_to_thread(self, mock_gui: MobiMarkerGUI) -> None:
         """Valid marker text is sent to the LSL thread."""
-        mock_gui.marker_input.text.return_value.strip.return_value = "Test Marker"
+        _marker_input(mock_gui).text.return_value.strip.return_value = "Test Marker"
 
         mock_gui.send_marker()
 
-        mock_gui.lsl_thread.send_marker.assert_called_once_with("Test Marker")
+        _lsl_thread(mock_gui).send_marker.assert_called_once_with("Test Marker")
 
     def test_valid_input_clears_field(self, mock_gui: MobiMarkerGUI) -> None:
         """Input field is cleared after sending."""
-        mock_gui.marker_input.text.return_value.strip.return_value = "Test"
+        _marker_input(mock_gui).text.return_value.strip.return_value = "Test"
 
         mock_gui.send_marker()
 
-        mock_gui.marker_input.clear.assert_called_once()
+        _marker_input(mock_gui).clear.assert_called_once()
 
     def test_empty_input_shows_error(self, mock_gui: MobiMarkerGUI) -> None:
         """Empty input shows error in status."""
-        mock_gui.marker_input.text.return_value.strip.return_value = ""
+        _marker_input(mock_gui).text.return_value.strip.return_value = ""
 
         with patch("mobi_marker.gui.format_status_message", return_value="error msg"):
             mock_gui.send_marker()
 
-        mock_gui.lsl_thread.send_marker.assert_not_called()
-        mock_gui.status_display.append.assert_called()
+        _lsl_thread(mock_gui).send_marker.assert_not_called()
+        _status_display(mock_gui).append.assert_called()
 
     def test_no_thread_shows_error(self, mock_gui: MobiMarkerGUI) -> None:
         """No LSL thread shows error in status."""
         mock_gui.lsl_thread = None
-        mock_gui.marker_input.text.return_value.strip.return_value = "Test"
+        _marker_input(mock_gui).text.return_value.strip.return_value = "Test"
 
         with patch("mobi_marker.gui.format_status_message", return_value="error msg"):
             mock_gui.send_marker()
 
-        mock_gui.status_display.append.assert_called()
+        _status_display(mock_gui).append.assert_called()
 
 
 class TestSendQuickMarker:
@@ -104,7 +144,7 @@ class TestSendQuickMarker:
         """Quick marker is sent to the LSL thread."""
         mock_gui.send_quick_marker("START")
 
-        mock_gui.lsl_thread.send_marker.assert_called_once_with("START")
+        _lsl_thread(mock_gui).send_marker.assert_called_once_with("START")
 
     def test_no_thread_shows_error(self, mock_gui: MobiMarkerGUI) -> None:
         """No LSL thread shows error in status."""
@@ -113,7 +153,7 @@ class TestSendQuickMarker:
         with patch("mobi_marker.gui.format_status_message", return_value="error"):
             mock_gui.send_quick_marker("START")
 
-        mock_gui.status_display.append.assert_called()
+        _status_display(mock_gui).append.assert_called()
 
 
 class TestSendEndModalityMarker:
@@ -121,49 +161,49 @@ class TestSendEndModalityMarker:
 
     def test_standard_modality_sends_formatted(self, mock_gui: MobiMarkerGUI) -> None:
         """Standard modality sends 'END <modality>'."""
-        mock_gui.modality_combo.currentText.return_value = "EEG"
+        _modality_combo(mock_gui).currentText.return_value = "EEG"
 
         mock_gui.send_end_modality_marker()
 
-        mock_gui.lsl_thread.send_marker.assert_called_once_with("END EEG")
+        _lsl_thread(mock_gui).send_marker.assert_called_once_with("END EEG")
 
     def test_custom_modality_sends_uppercase(self, mock_gui: MobiMarkerGUI) -> None:
         """Custom modality is uppercased."""
-        mock_gui.modality_combo.currentText.return_value = "Other"
-        mock_gui.custom_modality_input.text.return_value.strip.return_value = "custom"
+        _modality_combo(mock_gui).currentText.return_value = "Other"
+        _custom_modality_input(mock_gui).text.return_value.strip.return_value = "custom"
 
         mock_gui.send_end_modality_marker()
 
-        mock_gui.lsl_thread.send_marker.assert_called_once_with("END CUSTOM")
+        _lsl_thread(mock_gui).send_marker.assert_called_once_with("END CUSTOM")
 
     def test_custom_modality_clears_input(self, mock_gui: MobiMarkerGUI) -> None:
         """Custom input field is cleared after sending."""
-        mock_gui.modality_combo.currentText.return_value = "Other"
-        mock_gui.custom_modality_input.text.return_value.strip.return_value = "sensor"
+        _modality_combo(mock_gui).currentText.return_value = "Other"
+        _custom_modality_input(mock_gui).text.return_value.strip.return_value = "sensor"
 
         mock_gui.send_end_modality_marker()
 
-        mock_gui.custom_modality_input.clear.assert_called_once()
+        _custom_modality_input(mock_gui).clear.assert_called_once()
 
     def test_empty_custom_shows_error(self, mock_gui: MobiMarkerGUI) -> None:
         """Empty custom modality shows error."""
-        mock_gui.modality_combo.currentText.return_value = "Other"
-        mock_gui.custom_modality_input.text.return_value.strip.return_value = ""
+        _modality_combo(mock_gui).currentText.return_value = "Other"
+        _custom_modality_input(mock_gui).text.return_value.strip.return_value = ""
 
         with patch("mobi_marker.gui.format_status_message", return_value="error"):
             mock_gui.send_end_modality_marker()
 
-        mock_gui.lsl_thread.send_marker.assert_not_called()
+        _lsl_thread(mock_gui).send_marker.assert_not_called()
 
     def test_no_thread_shows_error(self, mock_gui: MobiMarkerGUI) -> None:
         """No LSL thread shows error in status."""
         mock_gui.lsl_thread = None
-        mock_gui.modality_combo.currentText.return_value = "EEG"
+        _modality_combo(mock_gui).currentText.return_value = "EEG"
 
         with patch("mobi_marker.gui.format_status_message", return_value="error"):
             mock_gui.send_end_modality_marker()
 
-        mock_gui.status_display.append.assert_called()
+        _status_display(mock_gui).append.assert_called()
 
 
 class TestOnModalityChanged:
@@ -173,19 +213,19 @@ class TestOnModalityChanged:
         """Selecting 'Other' shows custom input field."""
         mock_gui.on_modality_changed("Other")
 
-        mock_gui.custom_modality_input.setVisible.assert_called_once_with(True)
+        _custom_modality_input(mock_gui).setVisible.assert_called_once_with(True)
 
     def test_other_focuses_custom_input(self, mock_gui: MobiMarkerGUI) -> None:
         """Selecting 'Other' focuses custom input field."""
         mock_gui.on_modality_changed("Other")
 
-        mock_gui.custom_modality_input.setFocus.assert_called_once()
+        _custom_modality_input(mock_gui).setFocus.assert_called_once()
 
     def test_standard_modality_hides_input(self, mock_gui: MobiMarkerGUI) -> None:
         """Selecting standard modality hides custom input."""
         mock_gui.on_modality_changed("EEG")
 
-        mock_gui.custom_modality_input.setVisible.assert_called_once_with(False)
+        _custom_modality_input(mock_gui).setVisible.assert_called_once_with(False)
 
 
 class TestOnStreamReady:
@@ -195,19 +235,19 @@ class TestOnStreamReady:
         """Stream ready enables send button."""
         mock_gui.on_stream_ready(True)
 
-        mock_gui.send_button.setEnabled.assert_called_once_with(True)
+        _send_button(mock_gui).setEnabled.assert_called_once_with(True)
 
     def test_ready_enables_modality_button(self, mock_gui: MobiMarkerGUI) -> None:
         """Stream ready enables end modality button."""
         mock_gui.on_stream_ready(True)
 
-        mock_gui.end_modality_button.setEnabled.assert_called_once_with(True)
+        _end_modality_button(mock_gui).setEnabled.assert_called_once_with(True)
 
     def test_ready_enables_quick_buttons(self, mock_gui: MobiMarkerGUI) -> None:
         """Stream ready enables all quick marker buttons."""
         mock_gui.on_stream_ready(True)
 
-        for button in mock_gui.quick_marker_buttons:
+        for button in _quick_marker_buttons(mock_gui):
             button.setEnabled.assert_called_once_with(True)
 
     def test_not_ready_disables_buttons(self, mock_gui: MobiMarkerGUI) -> None:
@@ -215,14 +255,14 @@ class TestOnStreamReady:
         with patch("mobi_marker.gui.format_status_message", return_value="warning"):
             mock_gui.on_stream_ready(False)
 
-        mock_gui.send_button.setEnabled.assert_called_once_with(False)
+        _send_button(mock_gui).setEnabled.assert_called_once_with(False)
 
     def test_not_ready_shows_warning(self, mock_gui: MobiMarkerGUI) -> None:
         """Stream not ready shows warning in status."""
         with patch("mobi_marker.gui.format_status_message", return_value="warning"):
             mock_gui.on_stream_ready(False)
 
-        mock_gui.status_display.append.assert_called()
+        _status_display(mock_gui).append.assert_called()
 
 
 class TestUpdateStatus:
@@ -232,13 +272,13 @@ class TestUpdateStatus:
         """Message is appended to status display."""
         mock_gui.update_status("Test message")
 
-        mock_gui.status_display.append.assert_called_once_with("Test message")
+        _status_display(mock_gui).append.assert_called_once_with("Test message")
 
     def test_scrolls_to_bottom(self, mock_gui: MobiMarkerGUI) -> None:
         """Status display scrolls to bottom."""
         mock_scrollbar = Mock()
         mock_scrollbar.maximum.return_value = 100
-        mock_gui.status_display.verticalScrollBar.return_value = mock_scrollbar
+        _status_display(mock_gui).verticalScrollBar.return_value = mock_scrollbar
 
         mock_gui.update_status("Test")
 
@@ -246,7 +286,7 @@ class TestUpdateStatus:
 
     def test_handles_none_scrollbar(self, mock_gui: MobiMarkerGUI) -> None:
         """Handles None scrollbar gracefully."""
-        mock_gui.status_display.verticalScrollBar.return_value = None
+        _status_display(mock_gui).verticalScrollBar.return_value = None
 
         mock_gui.update_status("Test")  # Should not raise
 
@@ -256,25 +296,25 @@ class TestCloseEvent:
 
     def test_quits_thread(self, mock_gui: MobiMarkerGUI) -> None:
         """Thread is quit on close."""
-        mock_gui.lsl_thread.wait.return_value = True
+        _lsl_thread(mock_gui).wait.return_value = True
         mock_event = Mock()
 
         mock_gui.closeEvent(mock_event)
 
-        mock_gui.lsl_thread.quit.assert_called_once()
+        _lsl_thread(mock_gui).quit.assert_called_once()
 
     def test_waits_for_thread(self, mock_gui: MobiMarkerGUI) -> None:
         """Waits for thread with timeout."""
-        mock_gui.lsl_thread.wait.return_value = True
+        _lsl_thread(mock_gui).wait.return_value = True
         mock_event = Mock()
 
         mock_gui.closeEvent(mock_event)
 
-        mock_gui.lsl_thread.wait.assert_called_once_with(3000)
+        _lsl_thread(mock_gui).wait.assert_called_once_with(3000)
 
     def test_accepts_event(self, mock_gui: MobiMarkerGUI) -> None:
         """Event is accepted."""
-        mock_gui.lsl_thread.wait.return_value = True
+        _lsl_thread(mock_gui).wait.return_value = True
         mock_event = Mock()
 
         mock_gui.closeEvent(mock_event)
@@ -283,13 +323,13 @@ class TestCloseEvent:
 
     def test_timeout_terminates_thread(self, mock_gui: MobiMarkerGUI) -> None:
         """Thread is terminated on timeout."""
-        mock_gui.lsl_thread.wait.side_effect = [False, True]
+        _lsl_thread(mock_gui).wait.side_effect = [False, True]
         mock_event = Mock()
 
         with patch("mobi_marker.gui.format_status_message", return_value="warning"):
             mock_gui.closeEvent(mock_event)
 
-        mock_gui.lsl_thread.terminate.assert_called_once()
+        _lsl_thread(mock_gui).terminate.assert_called_once()
 
     def test_no_thread_still_accepts(self, mock_gui: MobiMarkerGUI) -> None:
         """Event is accepted even with no thread."""
@@ -302,7 +342,7 @@ class TestCloseEvent:
 
     def test_none_event_handled(self, mock_gui: MobiMarkerGUI) -> None:
         """None event is handled gracefully."""
-        mock_gui.lsl_thread.wait.return_value = True
+        _lsl_thread(mock_gui).wait.return_value = True
 
         mock_gui.closeEvent(None)  # Should not raise
 
