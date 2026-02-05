@@ -1,26 +1,13 @@
-"""GUI module for the LSL marker application.
+"""GUI module for the MoBI Marker application.
 
-This module provides the main GUI application for sending LSL (Lab Streaming
-Layer) markers. It includes a threaded LSL stream manager and a PyQt6-based
-user interface.
-
-Classes:
-    LSLStreamThread: Thread for managing the LSL stream outlet.
-    MobiMarkerGUI: Main GUI window for the LSL marker application.
-
-Constants:
-    AVAILABLE_MODALITIES: List of modalities available in the END dropdown.
-
-Functions:
-    main: Main entry point for the GUI application.
+Provides the PyQt6-based user interface for sending LSL markers.
 """
 
 import sys
-from datetime import datetime
+import traceback
 from typing import Optional
 
-from pylsl import StreamInfo, StreamOutlet, local_clock
-from PyQt6.QtCore import Qt, QThread, pyqtSignal
+from PyQt6.QtCore import Qt, pyqtSlot
 from PyQt6.QtGui import QCloseEvent
 from PyQt6.QtWidgets import (
     QApplication,
@@ -36,8 +23,8 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
-# Available modalities for the END [modality] dropdown
-# Edit this list to change what appears in the dropdown menu
+from mobi_marker.lsl_stream import LSLStreamThread, format_status_message
+
 AVAILABLE_MODALITIES = [
     "EEG",
     "fNIRS",
@@ -48,97 +35,8 @@ AVAILABLE_MODALITIES = [
     "Eye Tracking",
     "Audio",
     "Video",
-    "Other",  # Keep "Other" as the last option
+    "Other",
 ]
-
-
-class LSLStreamThread(QThread):
-    """Thread for managing the LSL stream outlet.
-
-    This class handles the creation and management of an LSL stream in a
-    separate thread to keep the GUI responsive.
-
-    Attributes:
-        status_update: Signal emitted when status updates occur.
-        outlet: The LSL stream outlet for sending markers.
-        stream_info: Information about the LSL stream.
-    """
-
-    status_update = pyqtSignal(str)
-
-    def __init__(self) -> None:
-        """Initialize the LSL stream thread.
-
-        Sets up the thread with null outlet and stream_info attributes.
-        """
-        super().__init__()
-        self.outlet: Optional[StreamOutlet] = None
-        self.stream_info: Optional[StreamInfo] = None
-
-    def run(self) -> None:
-        """Create and maintain the LSL stream.
-
-        This method is called when the thread starts. It creates the LSL
-        stream info and outlet, then emits status updates.
-
-        Raises:
-            Exception: If there's an error creating the LSL stream.
-        """
-        try:
-            # Create stream info
-            self.stream_info = StreamInfo(
-                name="MobiMarkerStream",
-                type="Markers",
-                channel_count=1,
-                nominal_srate=0,  # irregular sampling rate
-                channel_format="string",
-                source_id="mobi_marker_gui_v1",
-            )
-
-            # Create outlet
-            self.outlet = StreamOutlet(self.stream_info)
-            human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            lsl_time = local_clock()
-            self.status_update.emit(
-                f"[{human_time} | LSL: {lsl_time:.3f}] LSL stream started successfully"
-            )
-
-        except Exception as e:
-            human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            lsl_time = local_clock()
-            self.status_update.emit(
-                f"[{human_time} | LSL: {lsl_time:.3f}] Error starting LSL stream: {e}"
-            )
-
-    def send_marker(self, marker: str) -> None:
-        """Send a marker through the LSL stream.
-
-        Args:
-            marker: The marker string to send through the LSL stream.
-
-        Emits:
-            status_update: Signal with status message about the operation.
-        """
-        if self.outlet is not None:
-            try:
-                self.outlet.push_sample([marker])
-                human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                lsl_time = local_clock()
-                self.status_update.emit(
-                    f"[{human_time} | LSL: {lsl_time:.3f}] Sent marker: {marker}"
-                )
-            except Exception as e:
-                human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                lsl_time = local_clock()
-                self.status_update.emit(
-                    f"[{human_time} | LSL: {lsl_time:.3f}] Error sending marker: {e}"
-                )
-        else:
-            human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            lsl_time = local_clock()
-            self.status_update.emit(
-                f"[{human_time} | LSL: {lsl_time:.3f}] LSL stream not active"
-            )
 
 
 class MobiMarkerGUI(QMainWindow):
@@ -209,6 +107,7 @@ class MobiMarkerGUI(QMainWindow):
 
         # Send button
         self.send_button = QPushButton("Send Marker")
+        self.send_button.setEnabled(False)  # Disabled until stream is ready
         self.send_button.clicked.connect(self.send_marker)
         input_layout.addWidget(self.send_button)
 
@@ -234,10 +133,12 @@ class MobiMarkerGUI(QMainWindow):
         ]
 
         # Create and add quick marker buttons
+        self.quick_marker_buttons: list[QPushButton] = []
         row = 0
         col = 0
         for marker_text, color in quick_markers:
             button = QPushButton(marker_text)
+            button.setEnabled(False)  # Disabled until stream is ready
             button.setStyleSheet(
                 f"QPushButton {{"
                 f"    background-color: {color};"
@@ -259,6 +160,7 @@ class MobiMarkerGUI(QMainWindow):
                 lambda checked, text=marker_text: self.send_quick_marker(text)
             )
             quick_buttons_layout.addWidget(button, row, col)
+            self.quick_marker_buttons.append(button)
 
             col += 1
             if col > 2:  # 3 columns per row
@@ -307,6 +209,7 @@ class MobiMarkerGUI(QMainWindow):
             "    background-color: #545b62;"
             "}"
         )
+        self.end_modality_button.setEnabled(False)  # Disabled until stream is ready
         self.end_modality_button.clicked.connect(self.send_end_modality_marker)
         modality_layout.addWidget(self.end_modality_button)
 
@@ -382,7 +285,29 @@ class MobiMarkerGUI(QMainWindow):
         """
         self.lsl_thread = LSLStreamThread()
         self.lsl_thread.status_update.connect(self.update_status)
+        self.lsl_thread.stream_ready.connect(self.on_stream_ready)
         self.lsl_thread.start()
+
+    @pyqtSlot(bool)
+    def on_stream_ready(self, ready: bool) -> None:
+        """Handle stream ready signal.
+
+        Enables or disables marker buttons based on stream status.
+
+        Args:
+            ready: True if stream is ready, False otherwise.
+        """
+        self.send_button.setEnabled(ready)
+        self.end_modality_button.setEnabled(ready)
+        for button in self.quick_marker_buttons:
+            button.setEnabled(ready)
+
+        if not ready:
+            self.update_status(
+                format_status_message(
+                    "Warning: LSL stream failed to start. Marker buttons disabled."
+                )
+            )
 
     def send_marker(self) -> None:
         """Send the marker from the input field.
@@ -394,22 +319,15 @@ class MobiMarkerGUI(QMainWindow):
         marker_text = self.marker_input.text().strip()
 
         if not marker_text:
-            human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            lsl_time = local_clock()
-            self.update_status(
-                f"[{human_time} | LSL: {lsl_time:.3f}] Error: Empty marker text"
-            )
+            self.update_status(format_status_message("Error: Empty marker text"))
             return
 
         if self.lsl_thread is not None:
             self.lsl_thread.send_marker(marker_text)
-            self.marker_input.clear()  # Clear input after sending
+            self.marker_input.clear()
         else:
-            human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            lsl_time = local_clock()
             self.update_status(
-                f"[{human_time} | LSL: {lsl_time:.3f}] Error: LSL stream not "
-                "initialized"
+                format_status_message("Error: LSL stream not initialized")
             )
 
     def send_quick_marker(self, marker_text: str) -> None:
@@ -425,11 +343,8 @@ class MobiMarkerGUI(QMainWindow):
         if self.lsl_thread is not None:
             self.lsl_thread.send_marker(marker_text)
         else:
-            human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            lsl_time = local_clock()
             self.update_status(
-                f"[{human_time} | LSL: {lsl_time:.3f}] Error: LSL stream not "
-                "initialized"
+                format_status_message("Error: LSL stream not initialized")
             )
 
     def on_modality_changed(self, modality: str) -> None:
@@ -462,11 +377,8 @@ class MobiMarkerGUI(QMainWindow):
         if modality == "Other":
             custom_modality = self.custom_modality_input.text().strip()
             if not custom_modality:
-                human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-                lsl_time = local_clock()
                 self.update_status(
-                    f"[{human_time} | LSL: {lsl_time:.3f}] Error: "
-                    "Please enter a custom modality"
+                    format_status_message("Error: Please enter a custom modality")
                 )
                 return
             marker_text = f"END {custom_modality.upper()}"
@@ -477,11 +389,8 @@ class MobiMarkerGUI(QMainWindow):
         if self.lsl_thread is not None:
             self.lsl_thread.send_marker(marker_text)
         else:
-            human_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
-            lsl_time = local_clock()
             self.update_status(
-                f"[{human_time} | LSL: {lsl_time:.3f}] Error: LSL stream not "
-                "initialized"
+                format_status_message("Error: LSL stream not initialized")
             )
 
     def update_status(self, message: str) -> None:
@@ -509,7 +418,12 @@ class MobiMarkerGUI(QMainWindow):
         """
         if self.lsl_thread is not None:
             self.lsl_thread.quit()
-            self.lsl_thread.wait()
+            if not self.lsl_thread.wait(3000):
+                self.update_status(
+                    format_status_message("Warning: LSL thread did not stop gracefully")
+                )
+                self.lsl_thread.terminate()
+                self.lsl_thread.wait()
         if event is not None:
             event.accept()
 
@@ -526,19 +440,26 @@ def main() -> None:
     Raises:
         SystemExit: When the application is closed.
     """
-    app = QApplication(sys.argv)
+    try:
+        app = QApplication(sys.argv)
 
-    # Set application properties
-    app.setApplicationName("MoBI Marker")
-    app.setApplicationVersion("0.1.0")
-    app.setOrganizationName("MoBI Research")
+        # Set application properties
+        app.setApplicationName("MoBI Marker")
+        app.setApplicationVersion("0.1.0")
+        app.setOrganizationName("MoBI Research")
 
-    # Create and show the main window
-    window = MobiMarkerGUI()
-    window.show()
+        # Create and show the main window
+        window = MobiMarkerGUI()
+        window.show()
 
-    # Run the application
-    sys.exit(app.exec())
+        # Run the application
+        sys.exit(app.exec())
+
+    except Exception as e:
+        # Log any unexpected exceptions
+        error_msg = f"Fatal error: {e}\n{traceback.format_exc()}"
+        print(error_msg, file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
