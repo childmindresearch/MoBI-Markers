@@ -3,7 +3,9 @@
 Provides the PyQt6-based user interface for sending LSL markers.
 """
 
+import logging
 import sys
+import threading
 import traceback
 from typing import Optional
 
@@ -24,6 +26,8 @@ from PyQt6.QtWidgets import (
 )
 
 from mobi_marker.lsl_stream import LSLStreamThread, format_status_message
+
+logger = logging.getLogger(__name__)
 
 AVAILABLE_MODALITIES = [
     "EEG",
@@ -63,9 +67,12 @@ class MobiMarkerGUI(QMainWindow):
         Sets up the GUI components and starts the LSL stream.
         """
         super().__init__()
+        logger.info("MobiMarkerGUI.__init__ START")
         self.lsl_thread: Optional[LSLStreamThread] = None
         self.init_ui()
+        logger.debug("UI initialised")
         self.start_lsl_stream()
+        logger.info("MobiMarkerGUI.__init__ DONE")
 
     def init_ui(self) -> None:
         """Initialize the user interface.
@@ -283,10 +290,15 @@ class MobiMarkerGUI(QMainWindow):
         Creates and initializes the LSL stream thread, connecting its
         status update signal to the GUI's status display.
         """
+        logger.info("start_lsl_stream  |  creating LSLStreamThread")
         self.lsl_thread = LSLStreamThread()
+        logger.debug("Connecting status_update signal")
         self.lsl_thread.status_update.connect(self.update_status)
+        logger.debug("Connecting stream_ready signal")
         self.lsl_thread.stream_ready.connect(self.on_stream_ready)
+        logger.info("start_lsl_stream  |  calling thread.start()")
         self.lsl_thread.start()
+        logger.info("start_lsl_stream  |  thread.start() returned")
 
     @pyqtSlot(bool)
     def on_stream_ready(self, ready: bool) -> None:
@@ -297,17 +309,25 @@ class MobiMarkerGUI(QMainWindow):
         Args:
             ready: True if stream is ready, False otherwise.
         """
+        logger.info(
+            "on_stream_ready(%s)  |  thread=%s",
+            ready,
+            threading.current_thread().name,
+        )
         self.send_button.setEnabled(ready)
         self.end_modality_button.setEnabled(ready)
         for button in self.quick_marker_buttons:
             button.setEnabled(ready)
 
         if not ready:
+            logger.warning("Stream NOT ready — disabling all marker buttons")
             self.update_status(
                 format_status_message(
                     "Warning: LSL stream failed to start. Marker buttons disabled."
                 )
             )
+        else:
+            logger.info("Stream ready — all marker buttons enabled")
 
     def send_marker(self) -> None:
         """Send the marker from the input field.
@@ -317,15 +337,19 @@ class MobiMarkerGUI(QMainWindow):
         empty and that the LSL stream is initialized.
         """
         marker_text = self.marker_input.text().strip()
+        logger.debug("send_marker called  |  raw text='%s'", marker_text)
 
         if not marker_text:
+            logger.warning("send_marker REJECTED — empty text")
             self.update_status(format_status_message("Error: Empty marker text"))
             return
 
         if self.lsl_thread is not None:
+            logger.info("send_marker → lsl_thread.send_marker('%s')", marker_text)
             self.lsl_thread.send_marker(marker_text)
             self.marker_input.clear()
         else:
+            logger.error("send_marker FAILED — lsl_thread is None")
             self.update_status(
                 format_status_message("Error: LSL stream not initialized")
             )
@@ -340,9 +364,11 @@ class MobiMarkerGUI(QMainWindow):
             This method sends quick markers immediately without needing text input.
             It validates that the LSL stream is initialized before sending.
         """
+        logger.info("send_quick_marker('%s')", marker_text)
         if self.lsl_thread is not None:
             self.lsl_thread.send_marker(marker_text)
         else:
+            logger.error("send_quick_marker FAILED — lsl_thread is None")
             self.update_status(
                 format_status_message("Error: LSL stream not initialized")
             )
@@ -356,6 +382,7 @@ class MobiMarkerGUI(QMainWindow):
         Note:
             Shows/hides the custom modality input field based on selection.
         """
+        logger.debug("on_modality_changed('%s')", modality)
         if modality == "Other":
             self.custom_modality_input.setVisible(True)
             self.custom_modality_input.setFocus()
@@ -373,10 +400,12 @@ class MobiMarkerGUI(QMainWindow):
             case it uses the custom input field text.
         """
         modality = self.modality_combo.currentText()
+        logger.debug("send_end_modality_marker  |  modality='%s'", modality)
 
         if modality == "Other":
             custom_modality = self.custom_modality_input.text().strip()
             if not custom_modality:
+                logger.warning("Empty custom modality")
                 self.update_status(
                     format_status_message("Error: Please enter a custom modality")
                 )
@@ -386,9 +415,11 @@ class MobiMarkerGUI(QMainWindow):
         else:
             marker_text = f"END {modality}"
 
+        logger.info("send_end_modality_marker → '%s'", marker_text)
         if self.lsl_thread is not None:
             self.lsl_thread.send_marker(marker_text)
         else:
+            logger.error("send_end_modality_marker FAILED — lsl_thread is None")
             self.update_status(
                 format_status_message("Error: LSL stream not initialized")
             )
@@ -402,6 +433,7 @@ class MobiMarkerGUI(QMainWindow):
         Note:
             The status display automatically scrolls to show the newest message.
         """
+        logger.debug("update_status  |  %s", message)
         self.status_display.append(message)
         # Auto-scroll to bottom
         scrollbar = self.status_display.verticalScrollBar()
@@ -416,16 +448,32 @@ class MobiMarkerGUI(QMainWindow):
         Args:
             event: The close event from Qt.
         """
+        logger.info("closeEvent ENTER  |  lsl_thread=%s", self.lsl_thread)
         if self.lsl_thread is not None:
+            logger.info("Requesting event-loop quit …")
             self.lsl_thread.quit()
+            logger.info("Waiting up to 3 s for thread to finish …")
             if not self.lsl_thread.wait(3000):
+                logger.warning(
+                    "Thread did NOT finish within 3 s — forcing terminate"
+                )
                 self.update_status(
-                    format_status_message("Warning: LSL thread did not stop gracefully")
+                    format_status_message(
+                        "Warning: LSL thread did not stop gracefully"
+                    )
                 )
                 self.lsl_thread.terminate()
+                logger.warning("terminate() called — waiting indefinitely …")
                 self.lsl_thread.wait()
+                logger.info("Thread terminated and joined")
+            else:
+                logger.info("Thread finished within 3 s")
+        else:
+            logger.debug("No lsl_thread to shut down")
         if event is not None:
+            logger.info("Accepting close event")
             event.accept()
+        logger.info("closeEvent DONE")
 
 
 def main() -> None:
@@ -440,24 +488,41 @@ def main() -> None:
     Raises:
         SystemExit: When the application is closed.
     """
+    from mobi_marker.logging_config import log_system_info, setup_logging
+
+    log_file = setup_logging()
+    if log_file is not None:
+        logger.info("Log file: %s", log_file)
+    else:
+        logger.info("File logging disabled (test run detected)")
+    log_system_info()
+
     try:
+        logger.info("Creating QApplication …")
         app = QApplication(sys.argv)
 
         # Set application properties
         app.setApplicationName("MoBI Marker")
         app.setApplicationVersion("0.1.0")
         app.setOrganizationName("MoBI Research")
+        logger.info("QApplication created")
 
         # Create and show the main window
+        logger.info("Creating MobiMarkerGUI window …")
         window = MobiMarkerGUI()
         window.show()
+        logger.info("Window shown — entering Qt event loop")
 
         # Run the application
         sys.exit(app.exec())
 
+    except SystemExit:
+        logger.info("Application exiting normally")
+        raise
     except Exception as e:
         # Log any unexpected exceptions
         error_msg = f"Fatal error: {e}\n{traceback.format_exc()}"
+        logger.critical(error_msg)
         print(error_msg, file=sys.stderr)
         sys.exit(1)
 

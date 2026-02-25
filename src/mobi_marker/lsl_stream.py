@@ -3,11 +3,23 @@
 Provides thread-safe LSL stream handling for sending markers.
 """
 
+import logging
+import threading
+import traceback
 from datetime import datetime
 from typing import Optional
 
 from pylsl import StreamInfo, StreamOutlet, local_clock
 from PyQt6.QtCore import QMutex, QMutexLocker, QThread, pyqtSignal, pyqtSlot
+
+logger = logging.getLogger(__name__)
+
+STREAM_NAME = "MobiMarkerStream"
+STREAM_TYPE = "Markers"
+STREAM_CHANNEL_COUNT = 1
+STREAM_NOMINAL_SRATE = 0
+STREAM_CHANNEL_FORMAT = "string"
+STREAM_SOURCE_ID = "mobi_marker_gui_v1"
 
 
 def format_timestamp() -> tuple[str, float]:
@@ -41,34 +53,65 @@ class LSLStreamThread(QThread):
         self.stream_info: Optional[StreamInfo] = None
         self._mutex = QMutex()
         self._is_ready = False
+        logger.info(
+            "LSLStreamThread.__init__  |  QThread id=%s  |  Python thread=%s",
+            id(self),
+            threading.current_thread().name,
+        )
 
     def run(self) -> None:
         """Create and maintain the LSL stream."""
+        logger.info(
+            "run() ENTER  |  Python thread=%s  tid=%s",
+            threading.current_thread().name,
+            threading.current_thread().ident,
+        )
         try:
-            stream_info = StreamInfo(
-                name="MobiMarkerStream",
-                type="Markers",
-                channel_count=1,
-                nominal_srate=0,
-                channel_format="string",
-                source_id="mobi_marker_gui_v1",
+            logger.debug(
+                "Creating StreamInfo  name=%s  type=%s  source_id=%s",
+                STREAM_NAME,
+                STREAM_TYPE,
+                STREAM_SOURCE_ID,
             )
-            outlet = StreamOutlet(stream_info)
+            stream_info = StreamInfo(
+                name=STREAM_NAME,
+                type=STREAM_TYPE,
+                channel_count=STREAM_CHANNEL_COUNT,
+                nominal_srate=STREAM_NOMINAL_SRATE,
+                channel_format=STREAM_CHANNEL_FORMAT,
+                source_id=STREAM_SOURCE_ID,
+            )
+            logger.debug("StreamInfo created: %s", stream_info)
 
+            logger.debug("Creating StreamOutlet …")
+            outlet = StreamOutlet(stream_info)
+            logger.info("StreamOutlet created successfully: %s", outlet)
+
+            logger.debug("Acquiring mutex to store outlet & mark ready …")
             with QMutexLocker(self._mutex):
                 self.stream_info = stream_info
                 self.outlet = outlet
                 self._is_ready = True
+            logger.debug("Mutex released  |  _is_ready=%s", self._is_ready)
 
-            self.status_update.emit(
-                format_status_message("LSL stream started successfully")
-            )
+            status_msg = format_status_message("LSL stream started successfully")
+            logger.info("Emitting status_update: %s", status_msg)
+            self.status_update.emit(status_msg)
+
+            logger.info("Emitting stream_ready(True)")
             self.stream_ready.emit(True)
 
+            logger.debug("Connecting marker_request signal → _handle_marker_request")
             self.marker_request.connect(self._handle_marker_request)
+
+            logger.info("Entering event loop (exec) …")
             self.exec()
+            logger.info("Event loop (exec) exited normally")
 
         except Exception as e:
+            logger.critical(
+                "EXCEPTION in run(): %s\n%s", e, traceback.format_exc()
+            )
             self.status_update.emit(
                 format_status_message(f"Error starting LSL stream: {e}")
             )
@@ -76,25 +119,61 @@ class LSLStreamThread(QThread):
 
     def send_marker(self, marker: str) -> None:
         """Request to send a marker (thread-safe, callable from GUI thread)."""
+        logger.debug(
+            "send_marker('%s') called  |  Python thread=%s",
+            marker,
+            threading.current_thread().name,
+        )
         with QMutexLocker(self._mutex):
-            if not self._is_ready:
+            ready = self._is_ready
+            logger.debug("send_marker  |  _is_ready=%s", ready)
+            if not ready:
+                logger.warning(
+                    "send_marker REJECTED — stream not active  |  marker='%s'",
+                    marker,
+                )
                 self.status_update.emit(format_status_message("LSL stream not active"))
                 return
 
+        logger.debug("Emitting marker_request('%s')", marker)
         self.marker_request.emit(marker)
 
     @pyqtSlot(str)
     def _handle_marker_request(self, marker: str) -> None:
         """Handle marker request in the worker thread."""
+        logger.debug(
+            "_handle_marker_request('%s')  |  Python thread=%s",
+            marker,
+            threading.current_thread().name,
+        )
         with QMutexLocker(self._mutex):
             outlet = self.outlet
+            logger.debug(
+                "_handle_marker_request  |  outlet=%s",
+                "present" if outlet is not None else "NONE",
+            )
 
         if outlet is None:
+            logger.error(
+                "_handle_marker_request  |  outlet is None — cannot send '%s'",
+                marker,
+            )
             self.status_update.emit(format_status_message("LSL stream not active"))
             return
 
         try:
+            logger.debug("push_sample(['%s']) …", marker)
             outlet.push_sample([marker])
-            self.status_update.emit(format_status_message(f"Sent marker: {marker}"))
+            status_msg = format_status_message(f"Sent marker: {marker}")
+            logger.info("Marker sent OK  |  marker='%s'", marker)
+            self.status_update.emit(status_msg)
         except Exception as e:
-            self.status_update.emit(format_status_message(f"Error sending marker: {e}"))
+            logger.error(
+                "push_sample FAILED  |  marker='%s'  |  error=%s\n%s",
+                marker,
+                e,
+                traceback.format_exc(),
+            )
+            self.status_update.emit(
+                format_status_message(f"Error sending marker: {e}")
+            )
