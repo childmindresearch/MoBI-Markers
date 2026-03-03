@@ -81,6 +81,16 @@ class TestLSLStreamThreadInit:
 
         assert thread._is_ready is False
 
+    def test_thread_affinity_set_to_self(self) -> None:
+        """Thread affinity is moved to self for proper slot execution."""
+        with (
+            patch("mobi_marker.lsl_stream.StreamInfo"),
+            patch("mobi_marker.lsl_stream.StreamOutlet"),
+        ):
+            thread = LSLStreamThread()
+
+        assert thread.thread() is thread
+
 
 class TestLSLStreamThreadRun:
     """Tests for LSLStreamThread.run() method."""

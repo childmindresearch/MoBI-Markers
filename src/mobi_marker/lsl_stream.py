@@ -49,12 +49,14 @@ class LSLStreamThread(QThread):
     def __init__(self) -> None:
         """Initialize the LSL stream thread."""
         super().__init__()
+        self.moveToThread(self)
         self.outlet: Optional[StreamOutlet] = None
         self.stream_info: Optional[StreamInfo] = None
         self._mutex = QMutex()
         self._is_ready = False
         logger.info(
-            "LSLStreamThread.__init__  |  QThread id=%s  |  Python thread=%s",
+            "LSLStreamThread.__init__  |  QThread id=%s  |  Python thread=%s"
+            "  |  thread affinity moved to self",
             id(self),
             threading.current_thread().name,
         )
@@ -94,15 +96,18 @@ class LSLStreamThread(QThread):
                 self._is_ready = True
             logger.debug("Mutex released  |  _is_ready=%s", self._is_ready)
 
+            logger.debug(
+                "Connecting marker_request → _handle_marker_request"
+                "  (QueuedConnection)"
+            )
+            self.marker_request.connect(self._handle_marker_request)
+
             status_msg = format_status_message("LSL stream started successfully")
             logger.info("Emitting status_update: %s", status_msg)
             self.status_update.emit(status_msg)
 
             logger.info("Emitting stream_ready(True)")
             self.stream_ready.emit(True)
-
-            logger.debug("Connecting marker_request signal → _handle_marker_request")
-            self.marker_request.connect(self._handle_marker_request)
 
             logger.info("Entering event loop (exec) …")
             self.exec()
