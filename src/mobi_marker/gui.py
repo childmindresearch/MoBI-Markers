@@ -450,6 +450,8 @@ class MobiMarkerGUI(QMainWindow):
         """
         logger.info("closeEvent ENTER  |  lsl_thread=%s", self.lsl_thread)
         if self.lsl_thread is not None:
+            logger.info("Nullifying outlet to prevent flush-on-close blocking …")
+            self.lsl_thread.clear_outlet()
             logger.info("Requesting event-loop quit …")
             self.lsl_thread.quit()
             logger.info("Waiting up to 3 s for thread to finish …")
@@ -457,15 +459,14 @@ class MobiMarkerGUI(QMainWindow):
                 logger.warning(
                     "Thread did NOT finish within 3 s — forcing terminate"
                 )
-                self.update_status(
-                    format_status_message(
-                        "Warning: LSL thread did not stop gracefully"
-                    )
-                )
                 self.lsl_thread.terminate()
-                logger.warning("terminate() called — waiting indefinitely …")
-                self.lsl_thread.wait()
-                logger.info("Thread terminated and joined")
+                logger.warning("terminate() called — waiting up to 3 s …")
+                if not self.lsl_thread.wait(3000):
+                    logger.critical(
+                        "Thread did NOT terminate within 3 s — abandoning"
+                    )
+                else:
+                    logger.info("Thread terminated and joined")
             else:
                 logger.info("Thread finished within 3 s")
         else:

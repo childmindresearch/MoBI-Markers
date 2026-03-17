@@ -85,9 +85,9 @@ class LSLStreamThread(QThread):
             )
             logger.debug("StreamInfo created: %s", stream_info)
 
-            logger.debug("Creating StreamOutlet …")
-            outlet = StreamOutlet(stream_info)
-            logger.info("StreamOutlet created successfully: %s", outlet)
+            logger.debug("Creating StreamOutlet (max_buffered=30) …")
+            outlet = StreamOutlet(stream_info, max_buffered=30)
+            logger.info("StreamOutlet created (max_buffered=30): %s", outlet)
 
             logger.debug("Acquiring mutex to store outlet & mark ready …")
             with QMutexLocker(self._mutex):
@@ -121,6 +121,13 @@ class LSLStreamThread(QThread):
                 format_status_message(f"Error starting LSL stream: {e}")
             )
             self.stream_ready.emit(False)
+
+    def clear_outlet(self) -> None:
+        """Null out the outlet so its destructor doesn't block on flush."""
+        with QMutexLocker(self._mutex):
+            self.outlet = None
+            self._is_ready = False
+        logger.info("clear_outlet  |  outlet set to None, _is_ready=False")
 
     def send_marker(self, marker: str) -> None:
         """Request to send a marker (thread-safe, callable from GUI thread)."""
